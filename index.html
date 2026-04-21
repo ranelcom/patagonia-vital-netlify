@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Supabase Table Viewer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f172a;
+        --panel: #111827;
+        --border: #1f2937;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --accent: #3ecf8e;
+        --accent-ink: #052e1a;
+        --danger: #f87171;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 24px 32px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+      header p  { margin: 0; color: var(--muted); font-size: 13px; }
+      main { padding: 24px 32px; max-width: 1100px; }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .controls label { color: var(--muted); font-size: 13px; }
+      select, input, button {
+        font: inherit;
+        color: inherit;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 12px;
+      }
+      input { width: 220px; }
+      button {
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-color: transparent;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: progress; }
+      #status {
+        min-height: 20px;
+        margin: 12px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      #status.error { color: var(--danger); }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        vertical-align: top;
+      }
+      th {
+        background: var(--panel);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+      }
+      tr:last-child td { border-bottom: none; }
+      td pre {
+        margin: 0;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        max-width: 480px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .empty {
+        padding: 32px;
+        text-align: center;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Supabase Table Viewer</h1>
+      <p>Pick a table or type one in, then load rows through the Netlify Function.</p>
+    </header>
+    <main>
+      <form class="controls" id="form">
+        <label for="preset">Table</label>
+        <select id="preset">
+          <!-- Edit this list to match the tables in your Supabase project. -->
+          <option value="users">users</option>
+          <option value="posts">posts</option>
+          <option value="comments">comments</option>
+          <option value="__custom">(custom…)</option>
+        </select>
+        <input id="custom" placeholder="custom table name" hidden />
+        <label for="limit">Limit</label>
+        <input id="limit" type="number" min="1" max="500" value="50" style="width: 80px" />
+        <button type="submit" id="load">Load</button>
+      </form>
+      <div id="status"></div>
+      <div id="output" class="table-wrap" hidden></div>
+    </main>
+
+    <script type="module">
+      const form = document.getElementById('form')
+      const preset = document.getElementById('preset')
+      const custom = document.getElementById('custom')
+      const limitInput = document.getElementById('limit')
+      const loadBtn = document.getElementById('load')
+      const status = document.getElementById('status')
+      const output = document.getElementById('output')
+
+      preset.addEventListener('change', () => {
+        const isCustom = preset.value === '__custom'
+        custom.hidden = !isCustom
+        if (isCustom) custom.focus()
+      })
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const table =
+          preset.value === '__custom' ? custom.value.trim() : preset.value
+        if (!table) {
+          setStatus('Enter a table name.', true)
+          return
+        }
+        const limit = Math.max(1, Math.min(500, Number(limitInput.value) || 50))
+
+        loadBtn.disabled = true
+        setStatus('Loading…')
+        output.hidden = true
+        output.innerHTML = ''
+
+        try {
+          const res = await fetch(
+            `/api/supabase?table=${encodeURIComponent(table)}&limit=${limit}`,
+          )
+          const body = await res.json()
+          if (!res.ok) {
+            throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
+          }
+          renderRows(body, table)
+          setStatus(`Loaded ${Array.isArray(body) ? body.length : 0} row(s) from "${table}".`)
+        } catch (err) {
+          setStatus(err.message || String(err), true)
+        } finally {
+          loadBtn.disabled = false
+        }
+      })
+
+      function setStatus(msg, isError = false) {
+        status.textContent = msg
+        status.classList.toggle('error', isError)
+      }
+
+      function renderRows(rows, table) {
+        output.hidden = false
+        if (!Array.isArray(rows) || rows.length === 0) {
+          output.innerHTML = `<div class="empty">No rows in "${escapeHtml(table)}".</div>`
+          return
+        }
+        const columns = Array.from(
+          rows.reduce((set, row) => {
+            Object.keys(row ?? {}).forEach((k) => set.add(k))
+            return set
+          }, new Set()),
+        )
+        const thead =
+          '<thead><tr>' +
+          columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('') +
+          '</tr></thead>'
+        const tbody =
+          '<tbody>' +
+          rows
+            .map(
+              (row) =>
+                '<tr>' +
+                columns
+                  .map((c) => `<td>${formatCell(row?.[c])}</td>`)
+                  .join('') +
+                '</tr>',
+            )
+            .join('') +
+          '</tbody>'
+        output.innerHTML = `<table>${thead}${tbody}</table>`
+      }
+
+      function formatCell(value) {
+        if (value === null || value === undefined) {
+          return '<span style="color:var(--muted)">—</span>'
+        }
+        if (typeof value === 'object') {
+          return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`
+        }
+        return escapeHtml(String(value))
+      }
+
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+      }
+    </script>
+  </body>
+</html>

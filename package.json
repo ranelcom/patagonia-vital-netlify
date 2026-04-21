@@ -1,0 +1,8 @@
+{
+  "name": "patagonia-vital-netlify",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@netlify/functions": "^2.8.0"
+  }
+}
