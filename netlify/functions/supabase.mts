@@ -2,6 +2,7 @@ import type { Config } from '@netlify/functions'
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const SELECT_RE = /^[A-Za-z0-9_,*()\s]+$/
+const ALLOWED_TABLES = new Set(['users', 'posts', 'comments'])
 
 export default async (req: Request) => {
   const url = new URL(req.url)
@@ -13,6 +14,12 @@ export default async (req: Request) => {
     return Response.json(
       { error: 'Missing or invalid "table" query parameter.' },
       { status: 400 },
+    )
+  }
+  if (!ALLOWED_TABLES.has(table)) {
+    return Response.json(
+      { error: 'The requested table is not allowed.' },
+      { status: 403 },
     )
   }
   if (!SELECT_RE.test(select)) {

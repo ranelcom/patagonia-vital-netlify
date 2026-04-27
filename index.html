@@ -103,7 +103,7 @@
   <body>
     <header>
       <h1>Supabase Table Viewer</h1>
-      <p>Pick a table or type one in, then load rows through the Netlify Function.</p>
+      <p>Pick one of the predefined tables, then load rows through the Netlify Function.</p>
     </header>
     <main>
       <form class="controls" id="form">
@@ -113,9 +113,7 @@
           <option value="users">users</option>
           <option value="posts">posts</option>
           <option value="comments">comments</option>
-          <option value="__custom">(custom…)</option>
         </select>
-        <input id="custom" placeholder="custom table name" hidden />
         <label for="limit">Limit</label>
         <input id="limit" type="number" min="1" max="500" value="50" style="width: 80px" />
         <button type="submit" id="load">Load</button>
@@ -127,24 +125,16 @@
     <script type="module">
       const form = document.getElementById('form')
       const preset = document.getElementById('preset')
-      const custom = document.getElementById('custom')
       const limitInput = document.getElementById('limit')
       const loadBtn = document.getElementById('load')
       const status = document.getElementById('status')
       const output = document.getElementById('output')
 
-      preset.addEventListener('change', () => {
-        const isCustom = preset.value === '__custom'
-        custom.hidden = !isCustom
-        if (isCustom) custom.focus()
-      })
-
       form.addEventListener('submit', async (e) => {
         e.preventDefault()
-        const table =
-          preset.value === '__custom' ? custom.value.trim() : preset.value
+        const table = preset.value
         if (!table) {
-          setStatus('Enter a table name.', true)
+          setStatus('Select a table.', true)
           return
         }
         const limit = Math.max(1, Math.min(500, Number(limitInput.value) || 50))
