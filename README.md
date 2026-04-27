@@ -21,8 +21,8 @@ A minimal Netlify site that displays rows from Supabase tables through a Netlify
    netlify env:set SUPABASE_ANON_KEY YOUR-ANON-KEY
    ```
    Or add them in the Netlify UI under **Site configuration → Environment variables**.
-3. Edit the `<option>` list in `index.html` to match the tables in your Supabase project (or use the
-   "(custom…)" entry to type one in).
+3. Edit the predefined table list in both `index.html` and `netlify/functions/supabase.mts` to match the tables
+   you want to allow from your Supabase project.
 4. Make sure Row Level Security policies on those tables allow `SELECT` with the anon key (or adjust to use a
    service-role key server-side — see below).
 
@@ -42,7 +42,7 @@ curl 'http://localhost:8888/api/supabase?table=users&limit=5'
 
 ## Notes
 
-- The function only supports `SELECT`. It validates `table` and `select` against simple regexes before inserting
-  them into the upstream URL.
+- The function only supports `SELECT`. It validates `table` and `select`, and it only allows tables listed in
+  `ALLOWED_TABLES` before inserting them into the upstream URL.
 - To use the privileged service-role key instead of the anon key, swap `SUPABASE_ANON_KEY` for a
   `SUPABASE_SERVICE_ROLE_KEY` env var in `netlify/functions/supabase.mts`. Never expose that key in the browser.
