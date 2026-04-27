@@ -37,6 +37,24 @@
         align-items: center;
         margin-bottom: 16px;
       }
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+      .panel {
+        background: rgba(17, 24, 39, 0.85);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+      }
+      .panel h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .panel p {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
       .controls label { color: var(--muted); font-size: 13px; }
       select, input, button {
         font: inherit;
@@ -55,12 +73,35 @@
         cursor: pointer;
       }
       button:disabled { opacity: 0.5; cursor: progress; }
+      .ghost {
+        background: transparent;
+        color: var(--text);
+        border-color: var(--border);
+      }
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .toolbar p {
+        margin: 0;
+        color: var(--muted);
+      }
       #status {
         min-height: 20px;
         margin: 12px 0;
         color: var(--muted);
         font-size: 13px;
       }
+      #auth-status {
+        min-height: 20px;
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      #auth-status.error { color: var(--danger); }
       #status.error { color: var(--danger); }
       .table-wrap {
         overflow-x: auto;
@@ -103,32 +144,96 @@
   <body>
     <header>
       <h1>Supabase Table Viewer</h1>
-      <p>Pick one of the predefined tables, then load rows through the Netlify Function.</p>
+      <p>Log in first, then load one of the predefined tables through the Netlify Function.</p>
     </header>
     <main>
-      <form class="controls" id="form">
-        <label for="preset">Table</label>
-        <select id="preset">
-          <!-- Edit this list to match the tables in your Supabase project. -->
-          <option value="users">users</option>
-          <option value="posts">posts</option>
-          <option value="comments">comments</option>
-        </select>
-        <label for="limit">Limit</label>
-        <input id="limit" type="number" min="1" max="500" value="50" style="width: 80px" />
-        <button type="submit" id="load">Load</button>
-      </form>
-      <div id="status"></div>
-      <div id="output" class="table-wrap" hidden></div>
+      <div class="stack">
+        <section id="auth-panel" class="panel" hidden>
+          <h2>Login</h2>
+          <p>Use the credentials configured in Netlify environment variables.</p>
+          <form class="controls" id="login-form">
+            <label for="username">User</label>
+            <input id="username" name="username" autocomplete="username" />
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" />
+            <button type="submit" id="login-btn">Login</button>
+          </form>
+          <div id="auth-status"></div>
+        </section>
+
+        <section id="app-panel" hidden>
+          <div class="toolbar">
+            <p>Authenticated session active.</p>
+            <button type="button" id="logout" class="ghost">Logout</button>
+          </div>
+          <form class="controls" id="form">
+            <label for="preset">Table</label>
+            <select id="preset">
+              <!-- Edit this list to match the tables in your Supabase project. -->
+              <option value="users">users</option>
+              <option value="posts">posts</option>
+              <option value="comments">comments</option>
+            </select>
+            <label for="limit">Limit</label>
+            <input id="limit" type="number" min="1" max="500" value="50" style="width: 80px" />
+            <button type="submit" id="load">Load</button>
+          </form>
+          <div id="status"></div>
+          <div id="output" class="table-wrap" hidden></div>
+        </section>
+      </div>
     </main>
 
     <script type="module">
+      const authPanel = document.getElementById('auth-panel')
+      const appPanel = document.getElementById('app-panel')
+      const loginForm = document.getElementById('login-form')
+      const usernameInput = document.getElementById('username')
+      const passwordInput = document.getElementById('password')
+      const loginBtn = document.getElementById('login-btn')
+      const authStatus = document.getElementById('auth-status')
       const form = document.getElementById('form')
       const preset = document.getElementById('preset')
       const limitInput = document.getElementById('limit')
       const loadBtn = document.getElementById('load')
+      const logoutBtn = document.getElementById('logout')
       const status = document.getElementById('status')
       const output = document.getElementById('output')
+
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const username = usernameInput.value.trim()
+        const password = passwordInput.value
+
+        if (!username || !password) {
+          setAuthStatus('Enter your username and password.', true)
+          return
+        }
+
+        loginBtn.disabled = true
+        setAuthStatus('Signing in…')
+
+        try {
+          const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          })
+          const body = await res.json()
+          if (!res.ok) {
+            throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
+          }
+
+          passwordInput.value = ''
+          setAuthenticated(true)
+          setAuthStatus('')
+          setStatus('Signed in. Select a table to load data.')
+        } catch (err) {
+          setAuthStatus(err.message || String(err), true)
+        } finally {
+          loginBtn.disabled = false
+        }
+      })
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault()
@@ -149,6 +254,10 @@
             `/api/supabase?table=${encodeURIComponent(table)}&limit=${limit}`,
           )
           const body = await res.json()
+          if (res.status === 401) {
+            setAuthenticated(false)
+            throw new Error(body?.error || 'Your session expired. Please log in again.')
+          }
           if (!res.ok) {
             throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
           }
@@ -160,6 +269,48 @@
           loadBtn.disabled = false
         }
       })
+
+      logoutBtn.addEventListener('click', async () => {
+        logoutBtn.disabled = true
+        try {
+          await fetch('/api/logout', { method: 'POST' })
+        } finally {
+          logoutBtn.disabled = false
+          setAuthenticated(false)
+          setStatus('')
+          output.hidden = true
+          output.innerHTML = ''
+        }
+      })
+
+      await refreshAuthState()
+
+      async function refreshAuthState() {
+        try {
+          const res = await fetch('/api/auth-status')
+          const body = await res.json()
+          setAuthenticated(Boolean(body?.authenticated))
+          if (!res.ok && body?.error) {
+            setAuthStatus(body.error, true)
+          }
+        } catch (err) {
+          setAuthenticated(false)
+          setAuthStatus(err.message || String(err), true)
+        }
+      }
+
+      function setAuthenticated(authenticated) {
+        authPanel.hidden = authenticated
+        appPanel.hidden = !authenticated
+        if (!authenticated) {
+          usernameInput.focus()
+        }
+      }
+
+      function setAuthStatus(msg, isError = false) {
+        authStatus.textContent = msg
+        authStatus.classList.toggle('error', isError)
+      }
 
       function setStatus(msg, isError = false) {
         status.textContent = msg

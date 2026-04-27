@@ -1,10 +1,16 @@
 import type { Config } from '@netlify/functions'
+import { requireAuthorization } from './_auth.mts'
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const SELECT_RE = /^[A-Za-z0-9_,*()\s]+$/
 const ALLOWED_TABLES = new Set(['users', 'posts', 'comments'])
 
 export default async (req: Request) => {
+  const authError = await requireAuthorization(req)
+  if (authError) {
+    return authError
+  }
+
   const url = new URL(req.url)
   const table = url.searchParams.get('table')
   const select = url.searchParams.get('select') ?? '*'
