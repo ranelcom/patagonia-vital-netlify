@@ -6,9 +6,7 @@ A minimal Netlify site that displays rows from Supabase tables through a Netlify
 
 - `index.html` — static frontend with a table picker and a results grid.
 - `netlify/functions/supabase.mts` — Netlify Function at `/api/supabase` that proxies read queries to Supabase's
-  PostgREST endpoint. The anon key stays on the server, and access is gated by a simple login session.
-- `netlify/functions/login.mts`, `auth-status.mts`, `logout.mts` — authentication endpoints backed by
-  `LOGIN_USER` and `LOGIN_PASSWORD`.
+  PostgREST endpoint. The anon key stays on the server.
 - `netlify.toml` — wires `/api/*` → `/.netlify/functions/*`.
 
 ## Setup
@@ -21,8 +19,6 @@ A minimal Netlify site that displays rows from Supabase tables through a Netlify
    ```
    netlify env:set SUPABASE_URL   https://YOUR-PROJECT.supabase.co
    netlify env:set SUPABASE_ANON_KEY YOUR-ANON-KEY
-   netlify env:set LOGIN_USER your-login-user
-   netlify env:set LOGIN_PASSWORD your-login-password
    ```
    Or add them in the Netlify UI under **Site configuration → Environment variables**.
 3. Edit the predefined table list in both `index.html` and `netlify/functions/supabase.mts` to match the tables
@@ -36,7 +32,7 @@ A minimal Netlify site that displays rows from Supabase tables through a Netlify
 netlify dev
 ```
 
-Open <http://localhost:8888>, log in, pick a table, click **Load**.
+Open <http://localhost:8888>, pick a table, click **Load**.
 
 You can also hit the function directly:
 
@@ -48,6 +44,5 @@ curl 'http://localhost:8888/api/supabase?table=users&limit=5'
 
 - The function only supports `SELECT`. It validates `table` and `select`, and it only allows tables listed in
   `ALLOWED_TABLES` before inserting them into the upstream URL.
-- The login is intentionally simple and uses an HttpOnly cookie backed by `LOGIN_USER` and `LOGIN_PASSWORD`.
 - To use the privileged service-role key instead of the anon key, swap `SUPABASE_ANON_KEY` for a
   `SUPABASE_SERVICE_ROLE_KEY` env var in `netlify/functions/supabase.mts`. Never expose that key in the browser.
