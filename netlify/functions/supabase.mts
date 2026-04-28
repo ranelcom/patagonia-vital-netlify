@@ -3,7 +3,7 @@ import { requireAuthorization } from './_auth.mts'
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const SELECT_RE = /^[A-Za-z0-9_,*()\s]+$/
-const ALLOWED_TABLES = new Set(['users', 'posts', 'comments'])
+const ALLOWED_TABLES = new Set(['patagonai_metrics_daily'])
 
 export default async (req: Request) => {
   const authError = await requireAuthorization(req)
@@ -48,6 +48,9 @@ export default async (req: Request) => {
   const target = new URL(`/rest/v1/${table}`, supabaseUrl)
   target.searchParams.set('select', select)
   target.searchParams.set('limit', limit)
+  if (table === 'patagonai_metrics_daily') {
+    target.searchParams.set('order', 'date.desc')
+  }
 
   const upstream = await fetch(target, {
     headers: {
