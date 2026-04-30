@@ -3,7 +3,8 @@ import { requireAuthorization } from './_auth.mts'
 
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const SELECT_RE = /^[A-Za-z0-9_,*()\s]+$/
-const ALLOWED_TABLES = new Set(['patagonai_metrics_daily'])
+const SESSION_ID_RE = /^[0-9+\-()\s]{1,32}$/
+const ALLOWED_TABLES = new Set(['patagonai_metrics_daily', 'patagonai_memory'])
 
 export default async (req: Request) => {
   const authError = await requireAuthorization(req)
@@ -15,6 +16,7 @@ export default async (req: Request) => {
   const table = url.searchParams.get('table')
   const select = url.searchParams.get('select') ?? '*'
   const limit = url.searchParams.get('limit') ?? '50'
+  const sessionID = url.searchParams.get('sessionID')
 
   if (!table || !TABLE_NAME_RE.test(table)) {
     return Response.json(
@@ -34,6 +36,9 @@ export default async (req: Request) => {
   if (!/^\d+$/.test(limit) || Number(limit) > 500) {
     return Response.json({ error: 'Invalid "limit" parameter.' }, { status: 400 })
   }
+  if (sessionID && !SESSION_ID_RE.test(sessionID)) {
+    return Response.json({ error: 'Invalid "sessionID" parameter.' }, { status: 400 })
+  }
 
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_ANON_KEY
@@ -48,6 +53,9 @@ export default async (req: Request) => {
   const target = new URL(`/rest/v1/${table}`, supabaseUrl)
   target.searchParams.set('select', select)
   target.searchParams.set('limit', limit)
+  if (sessionID) {
+    target.searchParams.set('sessionID', `eq.${sessionID}`)
+  }
   if (table === 'patagonai_metrics_daily') {
     target.searchParams.set('order', 'date.desc')
   }
