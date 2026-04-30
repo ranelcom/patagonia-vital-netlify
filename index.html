@@ -89,6 +89,9 @@
         margin: 0;
         color: var(--muted);
       }
+      .filter-group[hidden] {
+        display: none;
+      }
       #status {
         min-height: 20px;
         margin: 12px 0;
@@ -171,7 +174,14 @@
             <select id="preset">
               <!-- Edit this list to match the tables in your Supabase project. -->
               <option value="patagonai_metrics_daily">patagonai_metrics_daily</option>
+              <option value="patagonai_memory">patagonai_memory</option>
             </select>
+            <span id="session-filter-group" class="filter-group" hidden>
+              <label for="session-filter">sessionID</label>
+              <select id="session-filter">
+                <option value="">All sessionIDs</option>
+              </select>
+            </span>
             <label for="limit">Limit</label>
             <input id="limit" type="number" min="1" max="500" value="50" style="width: 80px" />
             <button type="submit" id="load">Load</button>
@@ -192,6 +202,8 @@
       const authStatus = document.getElementById('auth-status')
       const form = document.getElementById('form')
       const preset = document.getElementById('preset')
+      const sessionFilterGroup = document.getElementById('session-filter-group')
+      const sessionFilter = document.getElementById('session-filter')
       const limitInput = document.getElementById('limit')
       const loadBtn = document.getElementById('load')
       const logoutBtn = document.getElementById('logout')
@@ -226,6 +238,7 @@
           setAuthenticated(true)
           setAuthStatus('')
           setStatus('Signed in. Select a table to load data.')
+          await syncSessionFilter()
         } catch (err) {
           setAuthStatus(err.message || String(err), true)
         } finally {
@@ -233,9 +246,14 @@
         }
       })
 
+      preset.addEventListener('change', async () => {
+        await syncSessionFilter()
+      })
+
       form.addEventListener('submit', async (e) => {
         e.preventDefault()
         const table = preset.value
+        const sessionID = usesSessionFilter(table) ? sessionFilter.value : ''
         if (!table) {
           setStatus('Select a table.', true)
           return
@@ -248,9 +266,14 @@
         output.innerHTML = ''
 
         try {
-          const res = await fetch(
-            `/api/supabase?table=${encodeURIComponent(table)}&limit=${limit}`,
-          )
+          const params = new URLSearchParams({
+            table,
+            limit: String(limit),
+          })
+          if (sessionID) {
+            params.set('sessionID', sessionID)
+          }
+          const res = await fetch(`/api/supabase?${params.toString()}`)
           const body = await res.json()
           if (res.status === 401) {
             setAuthenticated(false)
@@ -260,7 +283,9 @@
             throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
           }
           renderRows(body, table)
-          setStatus(`Loaded ${Array.isArray(body) ? body.length : 0} row(s) from "${table}".`)
+          setStatus(
+            `Loaded ${Array.isArray(body) ? body.length : 0} row(s) from "${table}"${sessionID ? ` for sessionID "${sessionID}"` : ''}.`,
+          )
         } catch (err) {
           setStatus(err.message || String(err), true)
         } finally {
@@ -288,6 +313,9 @@
           const res = await fetch('/api/auth-status')
           const body = await res.json()
           setAuthenticated(Boolean(body?.authenticated))
+          if (body?.authenticated) {
+            await syncSessionFilter()
+          }
           if (!res.ok && body?.error) {
             setAuthStatus(body.error, true)
           }
@@ -301,7 +329,71 @@
         authPanel.hidden = authenticated
         appPanel.hidden = !authenticated
         if (!authenticated) {
+          sessionFilterGroup.hidden = true
+          sessionFilter.disabled = true
+          sessionFilter.innerHTML = '<option value="">All sessionIDs</option>'
           usernameInput.focus()
+        }
+      }
+
+      async function syncSessionFilter() {
+        const enabled = usesSessionFilter(preset.value)
+        sessionFilterGroup.hidden = !enabled
+        sessionFilter.disabled = !enabled
+        sessionFilter.innerHTML = '<option value="">All sessionIDs</option>'
+
+        if (!enabled) {
+          return
+        }
+
+        await refreshSessionFilter()
+      }
+
+      function usesSessionFilter(table) {
+        return table === 'patagonai_memory'
+      }
+
+      async function refreshSessionFilter() {
+        const table = preset.value
+        sessionFilter.disabled = true
+        sessionFilter.innerHTML = '<option value="">Loading sessionIDs…</option>'
+
+        try {
+          const params = new URLSearchParams({
+            table,
+            select: 'sessionID',
+            limit: '500',
+          })
+          const res = await fetch(`/api/supabase?${params.toString()}`)
+          const body = await res.json()
+
+          if (res.status === 401) {
+            setAuthenticated(false)
+            throw new Error(body?.error || 'Your session expired. Please log in again.')
+          }
+          if (!res.ok) {
+            throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
+          }
+
+          const sessionIDs = Array.from(
+            new Set(
+              (Array.isArray(body) ? body : [])
+                .map((row) => row?.sessionID)
+                .filter((value) => value !== null && value !== undefined && String(value).trim())
+                .map((value) => String(value).trim()),
+            ),
+          ).sort((a, b) => a.localeCompare(b))
+
+          sessionFilter.innerHTML =
+            '<option value="">All sessionIDs</option>' +
+            sessionIDs
+              .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+              .join('')
+        } catch (err) {
+          sessionFilter.innerHTML = '<option value="">All sessionIDs</option>'
+          setStatus(err.message || String(err), true)
+        } finally {
+          sessionFilter.disabled = false
         }
       }
 

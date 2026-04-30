@@ -22,7 +22,8 @@ A minimal Netlify site that displays rows from Supabase tables through a Netlify
    ```
    Or add them in the Netlify UI under **Site configuration → Environment variables**.
 3. Edit the predefined table list in both `index.html` and `netlify/functions/supabase.mts` to match the tables
-   you want to allow from your Supabase project.
+   you want to allow from your Supabase project. The UI can also filter rows by `sessionID` when that column is
+   present.
 4. Make sure Row Level Security policies on those tables allow `SELECT` with the anon key (or adjust to use a
    service-role key server-side — see below).
 
